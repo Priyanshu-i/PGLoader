@@ -101,6 +101,9 @@ def extract_to_temp_and_move(zip_ref, target_files, folder_prefix, output_dir):
         # Extract files with progress
         print(f"Found {len(target_files)} files to extract")
         
+        # Create a set to track directories we've already processed
+        processed_dirs = set()
+        
         for file in tqdm(target_files, desc="Extracting"):
             try:
                 # Get relative path by removing the repo and folder prefix
@@ -113,11 +116,24 @@ def extract_to_temp_and_move(zip_ref, target_files, folder_prefix, output_dir):
                 
                 # Create the directory structure in temp dir
                 target_file_path = os.path.join(temp_dir, rel_path)
-                os.makedirs(os.path.dirname(target_file_path), exist_ok=True)
+                target_dir = os.path.dirname(target_file_path)
                 
-                # Extract the file
-                with zip_ref.open(file) as source, open(target_file_path, "wb") as target:
-                    target.write(source.read())
+                # Make sure the directory exists
+                os.makedirs(target_dir, exist_ok=True)
+                
+                # Record that we've processed this directory
+                processed_dirs.add(target_dir)
+                
+                # For actual files (not directories), extract the content
+                if not file.endswith('/'):
+                    with zip_ref.open(file) as source, open(target_file_path, "wb") as target:
+                        target.write(source.read())
+                # For directories, just ensure they exist (already done above)
+                else:
+                    # Just ensure the directory exists if it's a directory entry
+                    if target_dir not in processed_dirs:
+                        os.makedirs(target_dir, exist_ok=True)
+                        processed_dirs.add(target_dir)
             except Exception as e:
                 print(f"\nWarning: Failed to extract {file}: {e}")
                 continue
@@ -190,9 +206,12 @@ def download_github_folder(url, output_dir=None):
             repo_dir_prefix = f"{repo}-{branch}/"
             folder_prefix = repo_dir_prefix + folder_path + "/" if folder_path else repo_dir_prefix
             
-            # Get list of files in the target folder
+            # Get list of all files in the zip
+            all_files = zip_ref.namelist()
+            
+            # Properly identify all files and directories within the target folder
             target_files = [
-                file for file in zip_ref.namelist()
+                file for file in all_files
                 if file.startswith(folder_prefix) and file != folder_prefix
             ]
             
